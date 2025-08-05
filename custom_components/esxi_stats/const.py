@@ -32,16 +32,22 @@ CONF_NAME = "name"
 CONF_DS_STATE = "datastore"
 CONF_LIC_STATE = "license"
 CONF_NOTIFY = "notify"
+CONF_SCAN_INTERVAL = "scan_interval"
+CONF_UPDATE_INTERVAL = "update_interval"
 
 DEFAULT_NAME = "ESXi"
 DEFAULT_PORT = 443
 DEFAULT_DS_STATE = "free_space_gb"
 DEFAULT_LIC_STATE = "status"
+DEFAULT_SCAN_INTERVAL = 15
+DEFAULT_UPDATE_INTERVAL = 45
 
 DEFAULT_OPTIONS = {
     "datastore": "free_space_gb",
     "license": "status",
     "notify": "true",
+    "scan_interval": DEFAULT_SCAN_INTERVAL,
+    "update_interval": DEFAULT_UPDATE_INTERVAL,
 }
 
 DATASTORE_STATES = [

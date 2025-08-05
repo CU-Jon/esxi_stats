@@ -9,10 +9,14 @@ from .const import (
     CONF_DS_STATE,
     CONF_LIC_STATE,
     CONF_NOTIFY,
+    CONF_SCAN_INTERVAL,
+    CONF_UPDATE_INTERVAL,
     DOMAIN,
     DEFAULT_PORT,
     DEFAULT_DS_STATE,
     DEFAULT_LIC_STATE,
+    DEFAULT_SCAN_INTERVAL,
+    DEFAULT_UPDATE_INTERVAL,
     DATASTORE_STATES,
     LICENSE_STATES,
 )
@@ -168,6 +172,8 @@ class ESXiStatsOptionsFlow(config_entries.OptionsFlow):
             self.options[CONF_DS_STATE] = user_input[CONF_DS_STATE]
             self.options[CONF_LIC_STATE] = user_input[CONF_LIC_STATE]
             self.options[CONF_NOTIFY] = user_input[CONF_NOTIFY]
+            self.options[CONF_SCAN_INTERVAL] = user_input[CONF_SCAN_INTERVAL]
+            self.options[CONF_UPDATE_INTERVAL] = user_input[CONF_UPDATE_INTERVAL]
             return self.async_create_entry(title="", data=self.options)
 
         return self.async_show_form(
@@ -190,6 +196,16 @@ class ESXiStatsOptionsFlow(config_entries.OptionsFlow):
                         CONF_NOTIFY,
                         default=self.config_entry.options.get(CONF_NOTIFY, True),
                     ): bool,
+                    vol.Optional(
+                        CONF_SCAN_INTERVAL,
+                        default=self.config_entry.options.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL),
+                        description={"suggested_value": DEFAULT_SCAN_INTERVAL}
+                    ): vol.All(vol.Coerce(int), vol.Range(min=5, max=300)),
+                    vol.Optional(
+                        CONF_UPDATE_INTERVAL,
+                        default=self.config_entry.options.get(CONF_UPDATE_INTERVAL, DEFAULT_UPDATE_INTERVAL),
+                        description={"suggested_value": DEFAULT_UPDATE_INTERVAL}
+                    ): vol.All(vol.Coerce(int), vol.Range(min=10, max=600)),
                 }
             ),
         )

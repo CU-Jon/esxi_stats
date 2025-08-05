@@ -33,9 +33,11 @@
                 "data": {
                     "datastore": "Datastore State Attribute",
                     "license": "License State Attribute",
-                    "notify": "Create service call notifications"
+                    "notify": "Create service call notifications",
+                    "scan_interval": "Entity Scan Interval (seconds)",
+                    "update_interval": "Data Update Interval (seconds)"
                 },
-                "description": "Configure state attributes for datastore and license sensors."
+                "description": "Configure state attributes and refresh intervals. Scan interval controls how often entities check for updates (5-300 seconds). Update interval controls how often ESXi is queried for fresh data (10-600 seconds)."
             }
         }
     },

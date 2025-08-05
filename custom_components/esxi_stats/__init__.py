@@ -10,7 +10,6 @@ from homeassistant import config_entries
 from homeassistant.core import callback
 from homeassistant.exceptions import ConfigEntryNotReady
 import homeassistant.helpers.config_validation as cv
-from homeassistant.util import Throttle
 
 from homeassistant.const import (
     CONF_HOST,
@@ -44,6 +43,7 @@ from .const import (
     AVAILABLE_CMND_HOST_POWER,
     COMMAND,
     DEFAULT_OPTIONS,
+    DEFAULT_UPDATE_INTERVAL,
     DOMAIN,
     DOMAIN_DATA,
     PLATFORMS,
@@ -55,7 +55,6 @@ from .const import (
 )
 
 _LOGGER = logging.getLogger(__name__)
-MIN_TIME_BETWEEN_UPDATES = timedelta(seconds=45)
 
 HOST_PWR_SCHEMA = vol.Schema(
     {
@@ -212,18 +211,50 @@ class EsxiStats:
         self.passwd = config[DOMAIN].get(CONF_PASSWORD)
         self.port = config[DOMAIN].get(CONF_PORT)
         self.ssl = config[DOMAIN].get(CONF_VERIFY_SSL)
-        self.entry = config_entry.entry_id
+        
+        if config_entry:
+            self.entry = config_entry.entry_id
+        else:
+            self.entry = None
+        
+        # Get update interval from options, with fallback to default
+        update_interval = DEFAULT_UPDATE_INTERVAL
+        if config_entry and config_entry.options:
+            update_interval = config_entry.options.get("update_interval", DEFAULT_UPDATE_INTERVAL)
+        
+        self._update_interval = timedelta(seconds=update_interval)
+        self._last_update = None
 
-    @Throttle(MIN_TIME_BETWEEN_UPDATES)
+    def _should_update(self):
+        """Check if enough time has passed since last update."""
+        if self._last_update is None:
+            return True
+        time_since_update = datetime.now() - self._last_update
+        return time_since_update >= self._update_interval
+
     def update_data(self):
-        """Update data."""
+        """Update data with configurable throttling."""
+        # Check if we should update based on our custom interval
+        if not self._should_update():
+            if self._last_update:
+                time_since_update = datetime.now() - self._last_update
+                remaining = (self._update_interval - time_since_update).total_seconds()
+                _LOGGER.debug("Skipping update - throttled (next update in %.1f seconds)", remaining)
+            return
+            
         conn = None
         try:
             # connect and get data from host
             conn = esx_connect(self.host, self.user, self.passwd, self.port, self.ssl)
             content = conn.RetrieveContent()
+            
+            # Mark successful update time
+            self._last_update = datetime.now()
+            _LOGGER.debug("Data updated successfully at %s", self._last_update)
+            
         except Exception as error:  # pylint: disable=broad-except
             _LOGGER.debug("ESXi host is not reachable - skipping update - %s", error)
+            # Don't update _last_update on failure so we retry sooner
         else:
             # get host stats
             if self.config.get("vmhost") is True:
