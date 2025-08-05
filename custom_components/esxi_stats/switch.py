@@ -22,7 +22,7 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
     config = config_entry.data
     entry_id = config_entry.entry_id
     switches = []
-    
+
     # Get scan interval from options
     scan_interval = DEFAULT_SCAN_INTERVAL
     if config_entry.options:
@@ -30,7 +30,7 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
         _LOGGER.debug("Using configured scan interval: %s seconds", scan_interval)
     else:
         _LOGGER.debug("Using default scan interval: %s seconds", DEFAULT_SCAN_INTERVAL)
-    
+
     # Update the global SCAN_INTERVAL for this platform
     global SCAN_INTERVAL
     SCAN_INTERVAL = timedelta(seconds=scan_interval)

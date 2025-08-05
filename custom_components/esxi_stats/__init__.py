@@ -211,17 +211,17 @@ class EsxiStats:
         self.passwd = config[DOMAIN].get(CONF_PASSWORD)
         self.port = config[DOMAIN].get(CONF_PORT)
         self.ssl = config[DOMAIN].get(CONF_VERIFY_SSL)
-        
+
         if config_entry:
             self.entry = config_entry.entry_id
         else:
             self.entry = None
-        
+
         # Get update interval from options, with fallback to default
         update_interval = DEFAULT_UPDATE_INTERVAL
         if config_entry and config_entry.options:
             update_interval = config_entry.options.get("update_interval", DEFAULT_UPDATE_INTERVAL)
-        
+
         self._update_interval = timedelta(seconds=update_interval)
         self._last_update = None
 
@@ -241,17 +241,17 @@ class EsxiStats:
                 remaining = (self._update_interval - time_since_update).total_seconds()
                 _LOGGER.debug("Skipping update - throttled (next update in %.1f seconds)", remaining)
             return
-            
+
         conn = None
         try:
             # connect and get data from host
             conn = esx_connect(self.host, self.user, self.passwd, self.port, self.ssl)
             content = conn.RetrieveContent()
-            
+
             # Mark successful update time
             self._last_update = datetime.now()
             _LOGGER.debug("Data updated successfully at %s", self._last_update)
-            
+
         except Exception as error:  # pylint: disable=broad-except
             _LOGGER.debug("ESXi host is not reachable - skipping update - %s", error)
             # Don't update _last_update on failure so we retry sooner
