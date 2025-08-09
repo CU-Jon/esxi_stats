@@ -99,6 +99,11 @@ SNAP_REMOVE_SCHEMA = vol.Schema(
         vol.Required(COMMAND): cv.string,
     }
 )
+CLEANUP_STALE_SCHEMA = vol.Schema(
+    {
+        vol.Required(HOST): cv.string,
+    }
+)
 CONFIG_SCHEMA = vol.Schema(
     {DOMAIN: vol.Schema({}, extra=vol.ALLOW_EXTRA)}, extra=vol.ALLOW_EXTRA
 )
@@ -214,8 +219,10 @@ class EsxiStats:
 
         if config_entry:
             self.entry = config_entry.entry_id
+            self._config_entry = config_entry
         else:
             self.entry = None
+            self._config_entry = None
 
         # Get update interval from options, with fallback to default
         update_interval = DEFAULT_UPDATE_INTERVAL
@@ -256,6 +263,12 @@ class EsxiStats:
             _LOGGER.debug("ESXi host is not reachable - skipping update - %s", error)
             # Don't update _last_update on failure so we retry sooner
         else:
+            # Track previous entities for cleanup
+            previous_entities = {
+                'vmhost': set(self.hass.data[DOMAIN_DATA][self.entry]["vmhost"].keys()) if self.config.get("vmhost") is True else set(),
+                'vm': set(self.hass.data[DOMAIN_DATA][self.entry]["vm"].keys()) if self.config.get("vm") is True else set(),
+                'datastore': set(self.hass.data[DOMAIN_DATA][self.entry]["datastore"].keys()) if self.config.get("datastore") is True else set(),
+            }
             # get host stats
             if self.config.get("vmhost") is True:
                 # create/destroy view objects
@@ -442,9 +455,98 @@ class EsxiStats:
                     self.hass.data[DOMAIN_DATA][self.entry]["vm"][
                         vm_name
                     ] = get_vm_info(virtual_machine)
+
+            # Clean up stale entities after all data has been collected
+            # Check if auto-cleanup is enabled
+            if self._config_entry and self._config_entry.options.get("auto_cleanup_stale_entities", False):
+                self._cleanup_stale_entities(previous_entities)
         finally:
             if conn is not None:
                 esx_disconnect(conn)
+
+    def _cleanup_stale_entities(self, previous_entities):
+        """Clean up entities that no longer exist on ESXi."""
+        current_entities = {
+            'vmhost': set(self.hass.data[DOMAIN_DATA][self.entry]["vmhost"].keys()) if self.config.get("vmhost") is True else set(),
+            'vm': set(self.hass.data[DOMAIN_DATA][self.entry]["vm"].keys()) if self.config.get("vm") is True else set(),
+            'datastore': set(self.hass.data[DOMAIN_DATA][self.entry]["datastore"].keys()) if self.config.get("datastore") is True else set(),
+        }
+
+        for entity_type in ['vmhost', 'vm', 'datastore']:
+            stale_entities = previous_entities[entity_type] - current_entities[entity_type]
+
+            if stale_entities:
+                _LOGGER.info("Found %d stale %s entities: %s", len(stale_entities), entity_type, list(stale_entities))
+
+                for stale_entity in stale_entities:
+                    # Remove from our data store
+                    if stale_entity in self.hass.data[DOMAIN_DATA][self.entry][entity_type]:
+                        _LOGGER.info("Removing stale %s entity: %s", entity_type, stale_entity)
+                        del self.hass.data[DOMAIN_DATA][self.entry][entity_type][stale_entity]
+
+                        # Schedule entity registry cleanup
+                        self.hass.async_create_task(
+                            self._remove_stale_entity_from_registry(entity_type, stale_entity)
+                        )
+
+    async def _remove_stale_entity_from_registry(self, entity_type, entity_name):
+        """Remove stale entities from the entity registry."""
+        try:
+            from homeassistant.helpers import entity_registry as er
+            from homeassistant.helpers import device_registry as dr
+
+            entity_registry = er.async_get(self.hass)
+            device_registry = dr.async_get(self.hass)
+
+            # Find and remove all related entities for this object
+            entities_to_remove = []
+            device_ids_to_check = set()
+
+            # Generate possible unique IDs for this entity
+            host_part = self.host.replace(".", "_")
+            base_unique_id = f"{host_part}_{self.entry}_{entity_type}_{entity_name}"
+
+            # Find entities that match our naming patterns
+            for entity_id, entry in entity_registry.entities.items():
+                if entry.unique_id and entry.unique_id.startswith(base_unique_id):
+                    entities_to_remove.append(entity_id)
+                    # Track device IDs for potential cleanup
+                    if entry.device_id:
+                        device_ids_to_check.add(entry.device_id)
+
+            # Remove the entities
+            for entity_id in entities_to_remove:
+                _LOGGER.info("Removing stale entity from registry: %s", entity_id)
+                entity_registry.async_remove(entity_id)
+
+            # Check if devices should be removed (when all entities for a device are gone)
+            for device_id in device_ids_to_check:
+                # Count remaining entities for this device
+                remaining_entities = [
+                    entity_id for entity_id, entry in entity_registry.entities.items()
+                    if entry.device_id == device_id
+                ]
+
+                # If no entities remain for this device, remove the device
+                if not remaining_entities:
+                    device_entry = device_registry.async_get(device_id)
+                    if device_entry and device_entry.identifiers:
+                        # Only remove devices that belong to our integration
+                        for identifier_tuple in device_entry.identifiers:
+                            if identifier_tuple[0] == DOMAIN:
+                                _LOGGER.info("Removing stale device from registry: %s", device_entry.name)
+                                device_registry.async_remove_device(device_id)
+                                break
+
+            if entities_to_remove:
+                _LOGGER.info("Successfully removed %d stale entities for %s '%s'",
+                           len(entities_to_remove), entity_type, entity_name)
+            else:
+                _LOGGER.debug("No registry entries found for stale %s '%s'", entity_type, entity_name)
+
+        except Exception as e:
+            _LOGGER.error("Failed to remove stale entity %s '%s' from registry: %s",
+                         entity_type, entity_name, str(e))
 
 
 def check_files(hass):
@@ -637,6 +739,73 @@ def async_add_services(hass, config_entry):
         else:
             _LOGGER.error("snap_remove: '%s' is not a supported command", cmnd)
 
+    # Cleanup stale entities service
+    async def cleanup_stale_entities(call):
+        host = call.data["host"]
+
+        try:
+            # Find the config entry for this host
+            config_entry = None
+            for _entry in hass.config_entries.async_entries(DOMAIN):
+                if host == _entry.data.get("host"):
+                    config_entry = _entry
+                    break
+
+            if not config_entry:
+                _LOGGER.error("Host '%s' is not configured in HomeAssistant", host)
+                return
+
+            # Get the client and force an update to get current ESXi state
+            client = hass.data[DOMAIN_DATA][config_entry.entry_id]["client"]
+
+            # Store previous entities before update
+            previous_entities = {
+                'vmhost': set(hass.data[DOMAIN_DATA][config_entry.entry_id]["vmhost"].keys()) if client.config.get("vmhost") is True else set(),
+                'vm': set(hass.data[DOMAIN_DATA][config_entry.entry_id]["vm"].keys()) if client.config.get("vm") is True else set(),
+                'datastore': set(hass.data[DOMAIN_DATA][config_entry.entry_id]["datastore"].keys()) if client.config.get("datastore") is True else set(),
+            }
+
+            # Force data update to get current state from ESXi
+            client._last_update = None  # Reset to force update
+            client.update_data()
+
+            # Get current entities after update
+            current_entities = {
+                'vmhost': set(hass.data[DOMAIN_DATA][config_entry.entry_id]["vmhost"].keys()) if client.config.get("vmhost") is True else set(),
+                'vm': set(hass.data[DOMAIN_DATA][config_entry.entry_id]["vm"].keys()) if client.config.get("vm") is True else set(),
+                'datastore': set(hass.data[DOMAIN_DATA][config_entry.entry_id]["datastore"].keys()) if client.config.get("datastore") is True else set(),
+            }
+
+            # Find and clean up stale entities
+            stale_count = 0
+            for entity_type in ['vmhost', 'vm', 'datastore']:
+                stale_entities = previous_entities[entity_type] - current_entities[entity_type]
+                stale_count += len(stale_entities)
+
+                if stale_entities:
+                    _LOGGER.info("Manual cleanup: Found %d stale %s entities: %s",
+                               len(stale_entities), entity_type, list(stale_entities))
+
+                    for stale_entity in stale_entities:
+                        await client._remove_stale_entity_from_registry(entity_type, stale_entity)
+
+            # Create notification with results
+            from homeassistant.components import persistent_notification
+            if stale_count > 0:
+                message = f"Cleanup completed: Removed {stale_count} stale entities from {host}"
+                _LOGGER.info(message)
+            else:
+                message = f"Cleanup completed: No stale entities found on {host}"
+                _LOGGER.info(message)
+
+            persistent_notification.create(hass, message, "ESXi Stats Cleanup")
+
+        except Exception as error:  # pylint: disable=broad-except
+            error_msg = f"Failed to cleanup stale entities for {host}: {str(error)}"
+            _LOGGER.error(error_msg)
+            from homeassistant.components import persistent_notification
+            persistent_notification.create(hass, error_msg, "ESXi Stats Cleanup Error")
+
     hass.services.async_register(DOMAIN, "vm_power", vm_power, schema=VM_PWR_SCHEMA)
     hass.services.async_register(
         DOMAIN, "host_power", host_power, schema=HOST_PWR_SCHEMA
@@ -658,6 +827,9 @@ def async_add_services(hass, config_entry):
         "host_power_policy",
         host_power_policy,
         schema=HOST_PWR_POLICY_SCHEMA,
+    )
+    hass.services.async_register(
+        DOMAIN, "cleanup_stale_entities", cleanup_stale_entities, schema=CLEANUP_STALE_SCHEMA
     )
 
 

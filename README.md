@@ -11,6 +11,7 @@ Home Assistant integration for monitoring and controlling ESXi hosts and vCenter
 - ✅ Host power policy control
 - ✅ Individual devices for better organization
 - ✅ Real-time monitoring with proper units
+- ✅ Automatic cleanup of stale VM/host entities and devices
 
 ## What's Monitored
 
@@ -59,6 +60,23 @@ During setup, select which data types to monitor:
 | `verify_ssl` | No | `false` | SSL certificate verification (use `false` for self-signed certs) |
 
 > **💡 Tip**: Uncheck "Licenses" if you only need monitoring permissions
+
+## Stale Entity Cleanup
+
+Automatically removes VM and host entities and devices from Home Assistant when they no longer exist on the ESXi server.
+
+**Configuration Options:**
+1. Go to Configuration > Integrations > ESXi Stats > Configure
+2. Enable "Automatically remove stale VM and host entities"
+
+**Manual Cleanup Service:**
+```yaml
+service: esxi_stats.cleanup_stale_entities
+data:
+  host: "192.168.1.100"  # Your ESXi IP
+```
+
+> **🛡️ Safety**: Auto-cleanup is disabled by default. Only removes entities and devices for VMs/hosts that no longer exist on ESXi.
 
 ## Permissions Setup
 
@@ -228,6 +246,9 @@ Requires full ESXi license. Available services:
 - `esxi_stats.vm_power` - control VM power state
 - `esxi_stats.create_snapshot` - create VM snapshot
 - `esxi_stats.remove_snapshot` - remove VM snapshots
+
+**Entity Management:**
+- `esxi_stats.cleanup_stale_entities` - remove stale VM/host entities and devices
 
 Example:
 ```json

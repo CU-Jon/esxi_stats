@@ -34,6 +34,7 @@ CONF_LIC_STATE = "license"
 CONF_NOTIFY = "notify"
 CONF_SCAN_INTERVAL = "scan_interval"
 CONF_UPDATE_INTERVAL = "update_interval"
+CONF_AUTO_CLEANUP = "auto_cleanup_stale_entities"
 
 DEFAULT_NAME = "ESXi"
 DEFAULT_PORT = 443
@@ -48,6 +49,7 @@ DEFAULT_OPTIONS = {
     "notify": "true",
     "scan_interval": DEFAULT_SCAN_INTERVAL,
     "update_interval": DEFAULT_UPDATE_INTERVAL,
+    "auto_cleanup_stale_entities": False,
 }
 
 DATASTORE_STATES = [

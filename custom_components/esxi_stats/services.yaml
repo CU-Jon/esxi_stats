@@ -114,3 +114,14 @@ remove_snapshot:
     command:
       description: Which snapshot to remove
       example: 'all|first|last'
+
+cleanup_stale_entities:
+  name: Cleanup Stale Entities
+  description: |
+    Removes stale VM and host entities from Home Assistant that no longer exist on the ESXi server.
+    This service will connect to the ESXi server, get the current list of VMs and hosts,
+    and remove any entities in Home Assistant that are no longer present on the server.
+  fields:
+    host:
+      description: Host/vCenter target to check for stale entities
+      example: 192.168.1.1

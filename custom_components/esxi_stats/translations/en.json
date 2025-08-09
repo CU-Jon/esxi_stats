@@ -35,9 +35,10 @@
                     "license": "License State Attribute",
                     "notify": "Create service call notifications",
                     "scan_interval": "Entity Scan Interval (seconds)",
-                    "update_interval": "Data Update Interval (seconds)"
+                    "update_interval": "Data Update Interval (seconds)",
+                    "auto_cleanup_stale_entities": "Automatically remove stale VM and host entities"
                 },
-                "description": "Configure state attributes and refresh intervals. Scan interval controls how often entities check for updates (5-300 seconds). Update interval controls how often ESXi is queried for fresh data (10-600 seconds)."
+                "description": "Configure state attributes and refresh intervals. Scan interval controls how often entities check for updates (5-300 seconds). Update interval controls how often ESXi is queried for fresh data (10-600 seconds). Auto cleanup will automatically remove entities for VMs and hosts that no longer exist on the ESXi server."
             }
         }
     },
@@ -137,6 +138,16 @@
                 "vm": {
                     "name": "vm",
                     "description": "Name of the Virtual Machine"
+                }
+            }
+        },
+        "cleanup_stale_entities": {
+            "name": "cleanup_stale_entities",
+            "description": "Removes stale VM and host entities from Home Assistant that no longer exist on the ESXi server",
+            "fields": {
+                "host": {
+                    "name": "host",
+                    "description": "Host/vCenter target to check for stale entities"
                 }
             }
         }

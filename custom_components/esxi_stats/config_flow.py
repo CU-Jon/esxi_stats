@@ -11,6 +11,7 @@ from .const import (
     CONF_NOTIFY,
     CONF_SCAN_INTERVAL,
     CONF_UPDATE_INTERVAL,
+    CONF_AUTO_CLEANUP,
     DOMAIN,
     DEFAULT_PORT,
     DEFAULT_DS_STATE,
@@ -174,6 +175,7 @@ class ESXiStatsOptionsFlow(config_entries.OptionsFlow):
             self.options[CONF_NOTIFY] = user_input[CONF_NOTIFY]
             self.options[CONF_SCAN_INTERVAL] = user_input[CONF_SCAN_INTERVAL]
             self.options[CONF_UPDATE_INTERVAL] = user_input[CONF_UPDATE_INTERVAL]
+            self.options[CONF_AUTO_CLEANUP] = user_input[CONF_AUTO_CLEANUP]
             return self.async_create_entry(title="", data=self.options)
 
         return self.async_show_form(
@@ -206,6 +208,10 @@ class ESXiStatsOptionsFlow(config_entries.OptionsFlow):
                         default=self.config_entry.options.get(CONF_UPDATE_INTERVAL, DEFAULT_UPDATE_INTERVAL),
                         description={"suggested_value": DEFAULT_UPDATE_INTERVAL}
                     ): vol.All(vol.Coerce(int), vol.Range(min=10, max=600)),
+                    vol.Optional(
+                        CONF_AUTO_CLEANUP,
+                        default=self.config_entry.options.get(CONF_AUTO_CLEANUP, False),
+                    ): bool,
                 }
             ),
         )
